@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BharatForecast — Live Weather</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="stars"></div>
+
+<div class="app">
+
+  <header>
+    <div class="logo">BharatForecast <span>/ मौसम</span></div>
+    <div class="tagline">live conditions · हर शहर · everywhere</div>
+  </header>
+
+  <div class="free-badge">
+    <div class="free-dot"></div>
+    100% Free · No API Key · Works Everywhere
+  </div>
+
+  <div class="search-row">
+    <input type="text" id="cityInput" placeholder="Search city — Mumbai, Delhi, London…" />
+    <button onclick="doSearch()">Search</button>
+  </div>
+  <div class="error" id="errorMsg"></div>
+
+  <div class="pills">
+    <button class="pill" onclick="doSearch('Pune')">Pune</button>
+    <button class="pill" onclick="doSearch('Mumbai')">Mumbai</button>
+    <button class="pill" onclick="doSearch('Delhi')">Delhi</button>
+    <button class="pill" onclick="doSearch('Bengaluru')">Bengaluru</button>
+    <button class="pill" onclick="doSearch('Chennai')">Chennai</button>
+    <button class="pill" onclick="doSearch('Kolkata')">Kolkata</button>
+    <button class="pill" onclick="doSearch('London')">London</button>
+    <button class="pill" onclick="doSearch('Tokyo')">Tokyo</button>
+  </div>
+
+  <div class="loader" id="loader">
+    <div class="spinner"></div>
+    <div class="loader-txt">fetching live weather…</div>
+  </div>
+
+  <div class="card" id="weatherCard">
+    <div class="top-row">
+      <div class="city-name" id="rCity">—</div>
+      <div class="country-badge" id="rCountry">—</div>
+    </div>
+    <div class="cond-row">
+      <span class="w-icon" id="rIcon">🌤</span>
+      <span class="w-cond"  id="rCond">—</span>
+    </div>
+    <div class="temp-row">
+      <div class="temp-val" id="rTemp">—</div>
+      <div class="unit-toggle">
+        <button class="unit-btn active" id="btnC" onclick="setUnit('C')">°C</button>
+        <button class="unit-btn"        id="btnF" onclick="setUnit('F')">°F</button>
+      </div>
+    </div>
+    <div class="stats-grid">
+      <div class="stat"><div class="stat-icon">💧</div><div class="stat-label">Humidity</div><div class="stat-val" id="rHumidity">—</div></div>
+      <div class="stat"><div class="stat-icon">💨</div><div class="stat-label">Wind</div><div class="stat-val" id="rWind">—</div></div>
+      <div class="stat"><div class="stat-icon">👁</div><div class="stat-label">Visibility</div><div class="stat-val" id="rVis">—</div></div>
+    </div>
+    <div class="info-strip">
+      <div class="info-item"><div class="info-key">Feels like</div><div class="info-val" id="rFeels">—</div></div>
+      <div class="info-item"><div class="info-key">Pressure</div><div class="info-val" id="rPressure">—</div></div>
+      <div class="info-item"><div class="info-key">Sunrise</div><div class="info-val" id="rSunrise">—</div></div>
+      <div class="info-item"><div class="info-key">Sunset</div><div class="info-val" id="rSunset">—</div></div>
+      <div class="info-item"><div class="info-key">Max / Min</div><div class="info-val" id="rMinMax">—</div></div>
+    </div>
+  </div>
+
+  <div class="credit">BharatForecast · Open-Meteo · 100% Free · No Key Needed</div>
+
+</div>
+
+<script>
+// ── Stars ──────────────────────────────────────────────────────────────────────
+const starsEl = document.getElementById('stars');
+for (let i = 0; i < 90; i++) {
+  const s = document.createElement('div'); s.className = 'star';
+  const sz = Math.random() * 2 + 0.5;
+  s.style.cssText = `width:${sz}px;height:${sz}px;left:${Math.random()*100}%;top:${Math.random()*100}%;--d:${(Math.random()*3+2).toFixed(1)}s;--dl:${(Math.random()*5).toFixed(1)}s;`;
+  starsEl.appendChild(s);
+}
+
+// ── State ──────────────────────────────────────────────────────────────────────
+let tempC=null, feelsC=null, maxC=null, minC=null, currentUnit='C';
+
+// ── WMO Weather Code → emoji + text ───────────────────────────────────────────
+function wmoInfo(code) {
+  if (code === 0)              return { icon:'☀️', text:'Clear Sky' };
+  if (code <= 2)               return { icon:'🌤', text:'Partly Cloudy' };
+  if (code === 3)              return { icon:'☁️', text:'Overcast' };
+  if (code <= 49)              return { icon:'🌫', text:'Foggy' };
+  if (code <= 59)              return { icon:'🌦', text:'Drizzle' };
+  if (code <= 69)              return { icon:'🌧', text:'Rainy' };
+  if (code <= 79)              return { icon:'❄️', text:'Snowy' };
+  if (code <= 82)              return { icon:'🌧', text:'Rain Showers' };
+  if (code <= 86)              return { icon:'🌨', text:'Snow Showers' };
+  if (code === 95)             return { icon:'⛈',  text:'Thunderstorm' };
+  if (code <= 99)              return { icon:'⛈',  text:'Heavy Thunderstorm' };
+  return { icon:'🌡', text:'Unknown' };
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function toF(c)    { return Math.round(c * 9/5 + 32); }
+function set(id,v) { document.getElementById(id).textContent = v; }
+
+function setUnit(u) {
+  currentUnit = u;
+  document.getElementById('btnC').className = 'unit-btn' + (u==='C'?' active':'');
+  document.getElementById('btnF').className = 'unit-btn' + (u==='F'?' active':'');
+  renderTemp();
+}
+
+function renderTemp() {
+  if (tempC === null) return;
+  const u = currentUnit==='C' ? '°C' : '°F';
+  set('rTemp',   currentUnit==='C' ? Math.round(tempC)  : toF(tempC));
+  set('rFeels', (currentUnit==='C' ? Math.round(feelsC) : toF(feelsC)) + u);
+  set('rMinMax',
+    (currentUnit==='C' ? Math.round(minC) : toF(minC)) + '° / ' +
+    (currentUnit==='C' ? Math.round(maxC) : toF(maxC)) + '°'
+  );
+}
+
+function showError(msg) {
+  const el = document.getElementById('errorMsg');
+  el.textContent = msg; el.classList.toggle('show', !!msg);
+}
+function hideError() { showError(''); }
+
+function fmtTime(iso) {
+  const d = new Date(iso);
+  let h = d.getHours(), m = d.getMinutes().toString().padStart(2,'0');
+  const ap = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${m} ${ap}`;
+}
+
+// ── Search ─────────────────────────────────────────────────────────────────────
+function doSearch(city) {
+  const q = city || document.getElementById('cityInput').value.trim();
+  if (!q) return;
+  document.getElementById('cityInput').value = q;
+  fetchWeather(q);
+}
+
+document.getElementById('cityInput')
+  .addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  FETCH WEATHER — Open-Meteo API
+//  ✅ Completely FREE
+//  ✅ No API key needed
+//  ✅ No CORS issues
+//  ✅ Works on file://, localhost, Netlify — EVERYWHERE
+//
+//  Step 1: Geocoding API → city name → lat/lon
+//  Step 2: Weather API   → lat/lon  → live weather data
+// ══════════════════════════════════════════════════════════════════════════════
+async function fetchWeather(city) {
+  hideError();
+  document.getElementById('weatherCard').classList.remove('show');
+  document.getElementById('loader').classList.add('show');
+
+  try {
+    // ── STEP 1: Get coordinates from city name ────────────────────────────
+    const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en&format=json`;
+    const geoRes = await fetch(geoUrl);
+    const geoData = await geoRes.json();
+
+    if (!geoData.results || geoData.results.length === 0) {
+      throw new Error('notfound');
+    }
+
+    const loc     = geoData.results[0];
+    const lat     = loc.latitude;
+    const lon     = loc.longitude;
+    const tz      = loc.timezone || 'auto';
+    const cityName    = loc.name;
+    const countryName = loc.country || '';
+
+    // ── STEP 2: Get live weather from coordinates ─────────────────────────
+    const weatherUrl = `https://api.open-meteo.com/v1/forecast?` +
+      `latitude=${lat}&longitude=${lon}&timezone=${encodeURIComponent(tz)}` +
+      `&current=temperature_2m,apparent_temperature,relative_humidity_2m,` +
+      `wind_speed_10m,weather_code,pressure_msl,visibility,is_day` +
+      `&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset` +
+      `&wind_speed_unit=kmh&forecast_days=1`;
+
+    const wRes  = await fetch(weatherUrl);
+    const wData = await wRes.json();
+
+    const cur   = wData.current;
+    const daily = wData.daily;
+
+    // ── Parse values ──────────────────────────────────────────────────────
+    tempC  = cur.temperature_2m;
+    feelsC = cur.apparent_temperature;
+    maxC   = daily.temperature_2m_max[0];
+    minC   = daily.temperature_2m_min[0];
+
+    const humidity   = Math.round(cur.relative_humidity_2m);
+    const windKph    = Math.round(cur.wind_speed_10m);
+    const visKm      = cur.visibility ? (cur.visibility / 1000).toFixed(1) : 'N/A';
+    const pressure   = Math.round(cur.pressure_msl);
+    const info       = wmoInfo(cur.weather_code);
+    const sunrise    = fmtTime(daily.sunrise[0]);
+    const sunset     = fmtTime(daily.sunset[0]);
+
+    // ── Update DOM ────────────────────────────────────────────────────────
+    set('rCity',     cityName);
+    set('rCountry',  countryName);
+    set('rCond',     info.text);
+    document.getElementById('rIcon').textContent = info.icon;
+    set('rHumidity', humidity + '%');
+    set('rWind',     windKph + ' km/h');
+    set('rVis',      visKm + ' km');
+    set('rPressure', pressure + ' hPa');
+    set('rSunrise',  sunrise);
+    set('rSunset',   sunset);
+    renderTemp();
+
+    document.getElementById('loader').classList.remove('show');
+    document.getElementById('weatherCard').classList.add('show');
+
+  } catch (err) {
+    document.getElementById('loader').classList.remove('show');
+    if (err.message === 'notfound') {
+      showError('⚠ City not found. Check spelling and try again.');
+    } else {
+      showError('⚠ Weather load nahi hua. Internet check karo aur dobara try karo.');
+    }
+    console.error(err);
+  }
+}
+
+// ── Auto load Pune on start ────────────────────────────────────────────────────
+doSearch('Pune');
+</script>
+</body>
+</html>
